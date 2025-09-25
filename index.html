@@ -85,6 +85,7 @@
 
     /* --- Design Warehouse helpers --- */
     .design-img {
+      position: absolute; /* ✅ ensures MapLibre controls placement */
       width: 240px; height: 240px;
       border-radius: 14px;
       box-shadow: 0 12px 30px rgba(0,0,0,.35);
@@ -96,7 +97,7 @@
       -webkit-mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 72%, transparent 100%);
       mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 72%, transparent 100%);
       filter: saturate(.96) contrast(.96);
-      /* NOTE: animation timing is set inline by JS for 2 rotations in 10s */
+      /* JS sets animation for exactly 2 rotations in 10s each */
     }
     @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
