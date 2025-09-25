@@ -85,12 +85,18 @@
 
     /* --- Design Warehouse helpers --- */
     .design-img {
-      width: 220px; height: 220px;
-      border-radius: 12px;
+      width: 240px; height: 240px;
+      border-radius: 14px;
       box-shadow: 0 12px 30px rgba(0,0,0,.35);
       background-size: cover; background-position: center;
-      border: 1px solid rgba(255,255,255,.35);
+      border: 1px solid rgba(255,255,255,.30);
       transform-origin: 50% 50%;
+      /* blend softly into basemap */
+      opacity: .92;
+      mix-blend-mode: soft-light; /* try 'multiply' for stronger blend */
+      -webkit-mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 72%, transparent 100%);
+      mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 72%, transparent 100%);
+      filter: saturate(.96) contrast(.96);
     }
     @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .spin360 { animation: spin-slow 18s linear infinite; }
