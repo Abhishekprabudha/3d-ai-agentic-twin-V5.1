@@ -1,11 +1,5 @@
 /* =========================================================================
-   Agentic Twin — Disrupt → Correct → Normal + Hub Addition + City Addition (v6.5)
-   Enhancements:
-   1) City Addition = two-stage narration (Baseline → Proposal) with the
-      Guwahati hub icon + movements revealed only at the proposal stage.
-   2) During City Addition (both baseline and proposal), the rest of India
-      continues moving as-is (base network trucks kept running), and in the
-      proposal stage we also keep Kolkata ↔ Guwahati movements visible.
+   Agentic Twin — Disrupt → Correct → Normal + Hub Addition + City Addition + Design Warehouse
    ======================================================================= */
 
 /* -------------------- tiny debug pill -------------------- */
@@ -28,6 +22,15 @@ const AUTO_FIT=false; // keep OFF
 const HUB_ID="H_NAG";
 const DEFAULT_CAPACITY_UNITS=10;
 const DEFAULT_SPEED_KMPH=55;
+
+/* ----- Design Warehouse constants ----- */
+const DESIGN_IMG_URL = "warehouse%20design.png"; // file resides in repo root (encode space)
+const AHD = { name: "WH6 — Ahmedabad", lat: 22.912454, lon: 72.594419 }; // Aslali industrial area, Ahmedabad
+const DESIGN_FLY_ZOOM = 14.8;
+const DESIGN_PITCH    = 64;
+const DESIGN_SPIN_MS  = 60000;   // ~1 minute hover
+const DESIGN_STEP_MS  = 2400;    // orbit cadence
+const CONNECT_TO      = "WH2";   // connect Ahmedabad to Mumbai by default
 
 /* -------------------- anchors -------------------- */
 const CITY={
@@ -72,7 +75,6 @@ RP["WH4-H_NAG"]=[[17.3850,78.4867],[18.6,78.9],[19.8,79.2],[20.6,79.2],[21.1458,
 RP["WH5-H_NAG"]=[[22.5726,88.3639],[21.7,86.4],[21.2,83.8],[21.2,81.5],[21.1458,79.0882]];
 
 /* ---- Curved roads for City Addition ---- */
-/* Baseline: WH5 → Seven Sisters (gentle bends for road-like look) */
 RP["WH5-NE_AP"]=[[22.5726,88.3639],[24.5,89.0],[26.0,92.0],[27.0844,93.6053]];
 RP["WH5-NE_AS"]=[[22.5726,88.3639],[24.2,89.6],[25.5,90.8],[26.1445,91.7362]];
 RP["WH5-NE_MN"]=[[22.5726,88.3639],[23.5,90.4],[24.0,92.0],[24.8170,93.9368]];
@@ -89,9 +91,6 @@ RP["H_GUW-NE_ML"]=[[26.1445,91.7362],[25.9,91.8],[25.5788,91.8933]];
 RP["H_GUW-NE_MZ"]=[[26.1445,91.7362],[25.0,92.0],[23.7271,92.7176]];
 RP["H_GUW-NE_NL"]=[[26.1445,91.7362],[25.8,92.6],[25.6747,94.1100]];
 RP["H_GUW-NE_TR"]=[[26.1445,91.7362],[25.0,91.3],[23.8315,91.2868]];
-
-/* NOTE: RP contains NE fan-outs, but we hide them from the base network;
-   they’re added only when City Addition is active. */
 
 const keyFor=(a,b)=>`${a}-${b}`;
 const toLonLat=ll=>ll.map(p=>[p[1],p[0]]);
@@ -129,14 +128,12 @@ function networkGeoJSON(includeHub){
   }));
 
   if (SHOW_NE && !SHOW_HUB_CITY) {
-    // Baseline fan-out from Kolkata (explicit curved RPs above)
     for (const id of Object.keys(NE7)) {
       const k = `WH5-${id}`;
       const coords = RP[k] ? RP[k] : getRoadLatLon("WH5", id);
       features.push({ type:"Feature", properties:{id:k}, geometry:{type:"LineString",coordinates:toLonLat(coords)} });
     }
   } else if (SHOW_NE && SHOW_HUB_CITY) {
-    // Proposal: WH5 ↔ H_GUW + H_GUW → NE_* (skip NE_AS self-link)
     features.push({
       type:"Feature", properties:{id:"WH5-H_GUW"},
       geometry:{type:"LineString",coordinates:toLonLat(getRoadLatLon("WH5","H_GUW"))}
@@ -251,7 +248,20 @@ function ensureRoadLayers(){
       layout:{"line-cap":"round","line-join":"round"}});
   }
 
+  // --- Design Warehouse connection line source/layer ---
+  if (!map.getSource("design")) {
+    map.addSource("design", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  }
+  if (!map.getLayer("design-conn")) {
+    map.addLayer({
+      id: "design-conn", type: "line", source: "design",
+      paint: { "line-color": "#9fb4ff", "line-opacity": 0.95, "line-width": 4.0 },
+      layout: { "line-cap": "round", "line-join": "round" }
+    });
+  }
+
   try { map.moveLayer("fix-green"); } catch(e) {}
+  try { map.moveLayer("design-conn"); } catch(e) {}
 }
 function refreshRoadNetwork(){
   const src=map.getSource("routes");
@@ -458,10 +468,11 @@ const ChatUI = (() => {
     if(onCommand){
       if(cmd === 'disrupt' || cmd === 'correct' || cmd === 'normal' ||
          cmd === 'hub' || cmd === 'add hub' || cmd === 'hub addition' || cmd === 'nagpur hub' ||
-         cmd === 'city' || cmd === 'city addition'){
+         cmd === 'city' || cmd === 'city addition' ||
+         cmd === 'design' || cmd === 'design warehouse'){
         onCommand(cmd);
       } else {
-        pushBubble('Valid commands: Disrupt, Correct, Normal, Hub Addition, City Addition.', 'system');
+        pushBubble('Valid commands: Disrupt, Correct, Normal, Hub Addition, City Addition, Design Warehouse.', 'system');
       }
     }
   }
@@ -533,12 +544,11 @@ const Narrator = (() => {
       if(run!==currentRun) return;
       await queueOnce(lines, gap, rate, run, false);
     },
-     // inside: const Narrator = (() => { ... return { ... } })();
-sayLinesOnce: async (lines, gap=950, rate=0.95) => {
-  const run = newRunToken();
-  clearTTS();
-  await queueOnce(lines, gap, rate, run, false);
-},
+    sayLinesOnce: async (lines, gap=950, rate=0.95) => {
+      const run = newRunToken();
+      clearTTS();
+      await queueOnce(lines, gap, rate, run, false);
+    },
     sayOnce: (line)=>{
       const run = newRunToken();
       clearTTS();
@@ -675,6 +685,109 @@ function reroutePaused(step){
   return released;
 }
 
+/* -------------------- Design Warehouse helpers -------------------- */
+let __designImgMarker = null, __ahdLogoMarker = null, __ahdLabelMarker = null, __orbitTimer = null;
+
+function addDesignImageMarker() {
+  removeDesignArtifacts();
+  const el = document.createElement("div");
+  el.className = "design-img spin360";
+  el.style.backgroundImage = `url("${DESIGN_IMG_URL}?v=${Date.now()}")`;
+  __designImgMarker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+    .setLngLat([AHD.lon, AHD.lat])
+    .addTo(map);
+}
+function addAhmedabadLogoMarker() {
+  const logo = document.createElement("div");
+  logo.className = "wh-logo";
+  __ahdLogoMarker = new maplibregl.Marker({ element: logo, anchor: "bottom" })
+    .setLngLat([AHD.lon, AHD.lat])
+    .addTo(map);
+
+  const lab = document.createElement("div");
+  lab.className = "wh-label";
+  lab.textContent = AHD.name;
+  __ahdLabelMarker = new maplibregl.Marker({ element: lab, anchor: "top" })
+    .setLngLat([AHD.lon, AHD.lat])
+    .addTo(map);
+}
+function setAhmedabadConnection(toId = CONNECT_TO) {
+  const dst = CITY[toId];
+  if (!dst) return;
+  const feature = {
+    type: "Feature", properties: { id: `AHD-${toId}` },
+    geometry: { type: "LineString", coordinates: [[AHD.lon, AHD.lat], [dst.lon, dst.lat]] }
+  };
+  const src = map.getSource("design");
+  if (src) src.setData({ type: "FeatureCollection", features: [feature] });
+}
+function clearAhmedabadConnection() {
+  const src = map.getSource("design");
+  if (src) src.setData({ type: "FeatureCollection", features: [] });
+}
+function removeDesignArtifacts() {
+  clearInterval(__orbitTimer); __orbitTimer = null;
+  if (__designImgMarker) { __designImgMarker.remove(); __designImgMarker = null; }
+  if (__ahdLogoMarker)   { __ahdLogoMarker.remove();   __ahdLogoMarker   = null; }
+  if (__ahdLabelMarker)  { __ahdLabelMarker.remove();  __ahdLabelMarker  = null; }
+  clearAhmedabadConnection();
+}
+async function runDesignWarehouse() {
+  // reset state & visuals
+  Narrator.clear(); clearAlert(); clearFix();
+  SHOW_HUB=false; SHOW_NE=false; SHOW_HUB_CITY=false; refreshRoadNetwork();
+  removeDesignArtifacts();
+
+  // 1) Narrate and fly in
+  Narrator.sayLinesOnce([
+    "If you want to design a warehouse for four inbound trucks and three outbound trucks at the Aslali industrial area in Ahmedabad,",
+    "this is the location. Let me zoom in and show the design from multiple angles."
+  ], 850, 0.95);
+
+  addDesignImageMarker();
+
+  map.flyTo({
+    center: [AHD.lon, AHD.lat],
+    zoom: DESIGN_FLY_ZOOM,
+    pitch: DESIGN_PITCH,
+    bearing: 0,
+    duration: 2800
+  });
+
+  // 2) Orbit for ~1 minute while the image rotates via CSS
+  const t0 = Date.now();
+  let bearing = 15;
+  __orbitTimer = setInterval(() => {
+    map.easeTo({
+      center: [AHD.lon, AHD.lat],
+      zoom: DESIGN_FLY_ZOOM,
+      pitch: DESIGN_PITCH,
+      bearing: (bearing = (bearing + 28) % 360),
+      duration: DESIGN_STEP_MS - 200
+    });
+    if (Date.now() - t0 > DESIGN_SPIN_MS) {
+      clearInterval(__orbitTimer); __orbitTimer = null;
+      setTimeout(finishDesignWarehouse, 700);
+    }
+  }, DESIGN_STEP_MS);
+}
+function finishDesignWarehouse() {
+  // 3) Fly out, swap to warehouse logo, connect to network
+  if (__designImgMarker) { __designImgMarker.remove(); __designImgMarker = null; }
+  addAhmedabadLogoMarker();
+  setAhmedabadConnection(CONNECT_TO); // Mumbai by default
+
+  const b = new maplibregl.LngLatBounds();
+  Object.values(CITY).forEach(c => b.extend([c.lon, c.lat]));
+  b.extend([AHD.lon, AHD.lat]);
+  map.fitBounds(b, { padding: { top: 60, left: 60, right: 320, bottom: 60 }, duration: 1800, maxZoom: 6.8 });
+
+  Narrator.sayLinesOnce([
+    "We’ve inspected the proposed layout.",
+    "Now returning to the full network view. Ahmedabad is added with a warehouse marker and connected to the network."
+  ], 850, 0.95);
+}
+
 /* -------------------- state machine -------------------- */
 let mode="normal"; let currentStepIdx=-1;
 function setAlert(ids){ setSourceFeatures("alert",[featureForRoute(ids)]); }
@@ -689,24 +802,16 @@ function activateTrucksFromScenario(scn){
 
 /* -------- NEW: merge helpers so other corridors keep moving during City Addition -------- */
 function prefixTruckIds(trucksList, prefix){
-  return (trucksList||[]).map((t, i)=>({
-    ...t,
-    id: `${prefix}${t.id || i}`
-  }));
+  return (trucksList||[]).map((t, i)=>({ ...t, id: `${prefix}${t.id || i}` }));
 }
 function buildCombinedScenario(baseScn, overlayScn, overlayPrefix){
-  // Keep base warehouses/policies as-is; just concatenate trucks with namespacing
   const base = baseScn || {warehouses:[], trucks:[], policies:{}};
   const over = overlayScn || {warehouses:[], trucks:[], policies:{}};
   const trucksMerged = [
     ...(base.trucks||[]),
     ...prefixTruckIds(over.trucks||[], overlayPrefix||"NE_")
   ];
-  return {
-    warehouses: base.warehouses,          // stocks/labels UI is handled separately for NE
-    trucks: trucksMerged,
-    policies: base.policies || {}
-  };
+  return { warehouses: base.warehouses, trucks: trucksMerged, policies: base.policies || {} };
 }
 
 /* -------------------- Disrupt/Correct/Normal -------------------- */
@@ -715,6 +820,7 @@ function startDisrupt(){
     Narrator.sayLinesTwice(["A disruption is already active. Please click the Correct button to proceed."],900,0.92);
     return;
   }
+  removeDesignArtifacts();
   SHOW_HUB=false; SHOW_NE=false; SHOW_HUB_CITY=false; refreshRoadNetwork();
   currentStepIdx = (currentStepIdx + 1) % STEPS.length;
   const step=STEPS[currentStepIdx];
@@ -730,6 +836,7 @@ function applyCorrect(){
     Narrator.sayLinesTwice(["No active disruption. Click Disrupt first."],800,0.95);
     return;
   }
+  removeDesignArtifacts();
   SHOW_HUB=false; SHOW_NE=false; SHOW_HUB_CITY=false; refreshRoadNetwork();
   const step=STEPS[currentStepIdx];
   clearAlert(); setFix(step.reroute);
@@ -739,6 +846,7 @@ function applyCorrect(){
   mode="fixed";
 }
 function backToNormal(){
+  removeDesignArtifacts();
   SHOW_HUB=false; SHOW_NE=false; SHOW_HUB_CITY=false; refreshRoadNetwork();
   Narrator.clear();
   clearAlert(); clearFix();
@@ -755,6 +863,7 @@ function hubAddition(){
     return;
   }
   Narrator.clear(); clearAlert(); clearFix();
+  removeDesignArtifacts();
 
   SHOW_NE=false; SHOW_HUB_CITY=false;
   SHOW_HUB=true; refreshRoadNetwork();
@@ -786,18 +895,18 @@ async function cityAddition(){
     return;
   }
   Narrator.clear(); clearAlert(); clearFix();
+  removeDesignArtifacts();
 
   // Stage 1: Baseline (Kolkata → NE, no Guwahati hub) — KEEP other corridors moving
   SHOW_HUB=false; SHOW_HUB_CITY=false;
-  SHOW_NE=true; refreshRoadNetwork();               // adds WH5→NE curved roads (no hub)
-  // Merge: base trucks + NE baseline trucks (ID-namespaced to avoid clashes)
+  SHOW_NE=true; refreshRoadNetwork();
   const COMBINED_CITY_BASE = buildCombinedScenario(SCN_BEFORE, SCN_CITY_BASE, "NEB_");
   activateTrucksFromScenario(COMBINED_CITY_BASE);
 
   const NE_IDS = Object.keys(NE7);
   renderStatsTable(cityBaseStats, NE_IDS);
 
-  const baseS = summarizeScenario(SCN_CITY_BASE);   // KPI lines focus on NE addition deltas
+  const baseS = summarizeScenario(SCN_CITY_BASE);
   const baselineLines = [
     "Opening service to the Seven Sisters (Arunachal Pradesh, Assam, Manipur, Meghalaya, Mizoram, Nagaland, Tripura).",
     "Baseline: Serving from the existing network without a Guwahati hub. Other corridors continue as-is.",
@@ -809,15 +918,13 @@ async function cityAddition(){
   ];
   await Narrator.sayLinesOnce(baselineLines, 900, 0.92);
 
-  // Stage 2: Proposal (Guwahati hub appears now; fan-out switches to H_GUW)
+  // Stage 2: Proposal (Guwahati hub)
   await new Promise(r=>setTimeout(r, 900));
-  SHOW_HUB=false; SHOW_NE=true; SHOW_HUB_CITY=true; // reveal H_GUW + swap routes
+  SHOW_HUB=false; SHOW_NE=true; SHOW_HUB_CITY=true;
   refreshRoadNetwork();
 
-  // Merge: base trucks + NE proposal trucks (ID-namespaced). Ensures Kolkata ↔ Guwahati flows + rest of India continue.
   const COMBINED_CITY_PROPOSAL = buildCombinedScenario(SCN_BEFORE, SCN_CITY_AFTER, "NEP_");
 
-  // If your city.proposal didn't include WH5↔H_GUW trucks, add a minimal fallback so the movement is visible.
   const hasWH5GUW = (SCN_CITY_AFTER.trucks||[]).some(t=>
     (t.origin==="WH5" && (t.destination==="H_GUW"||t.destination==="NE_AS")) ||
     (t.destination==="WH5" && (t.origin==="H_GUW"||t.origin==="NE_AS"))
@@ -895,6 +1002,14 @@ const mapReady=new Promise(res=>map.on("load",res));
     btnCity.style.marginLeft="8px";
     ui.appendChild(btnCity);
   }
+  // Design Warehouse button
+  let btnDesign=document.getElementById("btnDesign");
+  if(!btnDesign){
+    btnDesign=document.createElement("button");
+    btnDesign.id="btnDesign"; btnDesign.textContent="Design Warehouse";
+    btnDesign.style.marginLeft="8px";
+    ui.appendChild(btnDesign);
+  }
 
   // wire buttons
   if(btnBefore) btnBefore.onclick=()=>startDisrupt();
@@ -902,6 +1017,7 @@ const mapReady=new Promise(res=>map.on("load",res));
   btnNormal.onclick=()=>backToNormal();
   btnHub.onclick=()=>hubAddition();
   btnCity.onclick=()=>cityAddition();
+  btnDesign.onclick=()=>runDesignWarehouse();
 
   // wire chat commands
   ChatUI.onCommand((cmd)=>{
@@ -910,6 +1026,7 @@ const mapReady=new Promise(res=>map.on("load",res));
     else if(cmd==='normal') backToNormal();
     else if(cmd==='hub' || cmd==='add hub' || cmd==='hub addition' || cmd==='nagpur hub') hubAddition();
     else if(cmd==='city' || cmd==='city addition') cityAddition();
+    else if(cmd==='design' || cmd==='design warehouse') runDesignWarehouse();
   });
 
   // load scenarios
@@ -941,7 +1058,7 @@ const mapReady=new Promise(res=>map.on("load",res));
   // start clean
   renderStatsTable(beforeStats);
   Narrator.sayLinesTwice([
-    "Type Disrupt, Correct, Normal — or Hub Addition — or City Addition — to drive the simulation.",
+    "Type Disrupt, Correct, Normal — or Hub Addition — or City Addition — or Design Warehouse — to drive the simulation.",
     "🔊 Toggle narration with the Mute button or press Ctrl+M."
   ]);
 })();
@@ -953,5 +1070,3 @@ async function fetchOrDefault(file, fallback){
 }
 function tick(){ const now=performance.now(); const dt=Math.min(0.05,(now-__lastTS)/1000); __lastTS=now; __dt=dt; drawFrame(); requestAnimationFrame(tick); }
 requestAnimationFrame(tick);
-
-
