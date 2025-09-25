@@ -91,15 +91,14 @@
       background-size: cover; background-position: center;
       border: 1px solid rgba(255,255,255,.30);
       transform-origin: 50% 50%;
-      /* blend softly into basemap */
       opacity: .92;
-      mix-blend-mode: soft-light; /* try 'multiply' for stronger blend */
+      mix-blend-mode: soft-light;
       -webkit-mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 72%, transparent 100%);
       mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 72%, transparent 100%);
       filter: saturate(.96) contrast(.96);
+      /* NOTE: animation timing is set inline by JS for 2 rotations in 10s */
     }
     @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .spin360 { animation: spin-slow 18s linear infinite; }
 
     .wh-logo {
       width: 34px; height: 34px; border-radius: 4px;
