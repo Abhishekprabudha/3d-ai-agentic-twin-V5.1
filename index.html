@@ -82,6 +82,32 @@
       #chat{ width:100%; height:40%; max-height:46%; }
       #ui{ left:12px; }
     }
+
+    /* --- Design Warehouse helpers --- */
+    .design-img {
+      width: 220px; height: 220px;
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.35);
+      background-size: cover; background-position: center;
+      border: 1px solid rgba(255,255,255,.35);
+      transform-origin: 50% 50%;
+    }
+    @keyframes spin-slow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spin360 { animation: spin-slow 18s linear infinite; }
+
+    .wh-logo {
+      width: 34px; height: 34px; border-radius: 4px;
+      background-image: url("warehouse_iso.png");
+      background-size: cover; background-position: center;
+      box-shadow: 0 8px 18px rgba(0,0,0,.28);
+    }
+    .wh-label {
+      font: 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color: #e8eef2;
+      background: rgba(10,10,12,.78);
+      padding: 4px 8px; border-radius: 999px; margin-top: 6px;
+      white-space: nowrap; text-shadow: 0 1px 0 rgba(0,0,0,.35);
+    }
   </style>
 </head>
 <body>
@@ -97,7 +123,7 @@
         </div>
         <div id="msgs"></div>
         <div id="composer">
-          <input id="chatInput" type="text" placeholder="Type: Disrupt / Correct / Normal / Hub Addition / City Addition" autocomplete="off" />
+          <input id="chatInput" type="text" placeholder="Type: Disrupt / Correct / Normal / Hub Addition / City Addition / Design Warehouse" autocomplete="off" />
           <button id="chatSend">Send</button>
         </div>
       </div>
