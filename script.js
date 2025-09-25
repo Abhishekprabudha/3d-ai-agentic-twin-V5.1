@@ -1,37 +1,41 @@
 /* =========================================================================
    Agentic Twin — Disrupt → Correct → Normal + Hub Addition + City Addition + Design Warehouse
-   ======================================================================= */
+   Enhancements:
+   - Correctly centered design image using wrapper (no transform clobber)
+   - No rotation; 10s hover/inspection
+   - Narration includes tonnage (based on DEFAULT_CAPACITY_UNITS)
+   - Camera view is saved before design demo and restored after
+   - Narration uses “angles” (not “angel”)
+   ========================================================================= */
 
 /* -------------------- tiny debug pill -------------------- */
-let __DBG=null;
+let __DBG = null;
 function debug(msg){
   if(!__DBG){
-    __DBG=document.createElement("div");
+    __DBG = document.createElement("div");
     __DBG.style.cssText="position:fixed;left:8px;bottom:8px;z-index:9999;background:rgba(0,0,0,.55);color:#eaf1f7;font:12px system-ui;padding:6px 8px;border-radius:6px;pointer-events:none";
     document.body.appendChild(__DBG);
   }
-  __DBG.textContent=msg||"";
+  __DBG.textContent = msg || "";
 }
 window.addEventListener("error",(e)=>debug(`Error: ${e.message||e}`));
 
 /* -------------------- config -------------------- */
 const STYLE_URL="style.json";
-const MAP_INIT={center:[79.5,22.5],zoom:5.3,minZoom:3,maxZoom:12}; // centered on India
+const MAP_INIT={center:[79.5,22.5],zoom:5.3,minZoom:3,maxZoom:12}; // nice India framing
 const WAREHOUSE_ICON_SRC="warehouse_iso.png";
 const AUTO_FIT=false;
 const HUB_ID="H_NAG";
-const DEFAULT_CAPACITY_UNITS=10;
+const DEFAULT_CAPACITY_UNITS=10;  // used for narration tonnage math
 const DEFAULT_SPEED_KMPH=55;
 
 /* ----- Design Warehouse constants ----- */
-const DESIGN_IMG_URL = "warehouse%20design.png"; // keep at repo root (space encoded)
+const DESIGN_IMG_URL = "warehouse%20design.png"; // keep in repo root (space encoded)
 const AHD = { name: "WH6 — Ahmedabad", lat: 22.912454, lon: 72.594419 }; // Aslali industrial area
 const DESIGN_FLY_ZOOM = 14.8;
 const DESIGN_PITCH    = 64;
-const DESIGN_ROTATIONS= 2;          // exactly 2 spins
-const DESIGN_ROT_MS   = 10000;      // 10s per rotation
-const DESIGN_STEP_MS  = 2400;       // orbit cadence
-const CONNECT_TO      = "WH2";      // connect Ahmedabad → Mumbai
+const DESIGN_HOVER_MS = 10000; // 10s hover/inspection (no rotation)
+const CONNECT_TO      = "WH2"; // connect Ahmedabad → Mumbai
 
 /* -------------------- anchors -------------------- */
 const CITY={
@@ -56,7 +60,8 @@ const NE7 = {
 const HUB_CITY = { H_GUW:{ name:"Hub — Guwahati", lat:26.1445, lon:91.7362 } };
 
 /* -------------------- route polylines (lat,lon) -------------------- */
-const RP={
+const RP = {};
+Object.assign(RP, {
   "WH1-WH2":[[28.6139,77.2090],[27.0,76.8],[25.6,75.2],[24.1,73.5],[23.0,72.6],[21.17,72.83],[19.9,72.9],[19.076,72.8777]],
   "WH2-WH3":[[19.0760,72.8777],[18.52,73.8567],[16.9,74.5],[15.9,74.5],[13.8,76.4],[12.9716,77.5946]],
   "WH3-WH1":[[12.9716,77.5946],[16.0,78.1],[17.3850,78.4867],[21.0,79.1],[26.9,78.0],[28.6139,77.2090]],
@@ -66,12 +71,16 @@ const RP={
   "WH4-WH5":[[17.3850,78.4867],[18.0,82.0],[19.2,84.8],[21.0,86.0],[22.5726,88.3639]],
   "WH5-WH1":[[22.5726,88.3639],[23.6,86.1],[24.3,83.0],[25.4,81.8],[26.45,80.35],[27.1767,78.0081],[28.6139,77.2090]],
   "WH5-WH2":[[22.5726,88.3639],[23.5,86.0],[22.5,84.0],[21.5,81.5],[21.1,79.0],[20.3,76.5],[19.3,74.5],[19.0760,72.8777]],
-  "WH5-WH3":[[22.5726,88.3639],[21.15,85.8],[19.5,85.8],[17.9,82.7],[16.5,80.3],[13.3409,77.1010],[12.9716,77.5946]],
+  "WH5-WH3":[[22.5726,88.3639],[21.15,85.8],[19.5,85.8],[17.9,82.7],[16.5,80.3],[13.3409,77.1010],[12.9716,77.5946]]
+});
+Object.assign(RP, {
   "WH1-H_NAG":[[28.6139,77.2090],[26.5,78.2],[24.7,79.0],[22.8,79.2],[21.1458,79.0882]],
   "WH2-H_NAG":[[19.0760,72.8777],[19.6,74.8],[20.2,76.9],[20.7,78.4],[21.1458,79.0882]],
   "WH3-H_NAG":[[12.9716,77.5946],[14.6,78.6],[16.8,79.3],[19.0,79.4],[21.1458,79.0882]],
   "WH4-H_NAG":[[17.3850,78.4867],[18.6,78.9],[19.8,79.2],[20.6,79.2],[21.1458,79.0882]],
-  "WH5-H_NAG":[[22.5726,88.3639],[21.7,86.4],[21.2,83.8],[21.2,81.5],[21.1458,79.0882]],
+  "WH5-H_NAG":[[22.5726,88.3639],[21.7,86.4],[21.2,83.8],[21.2,81.5],[21.1458,79.0882]]
+});
+Object.assign(RP, {
   "WH5-NE_AP":[[22.5726,88.3639],[24.5,89.0],[26.0,92.0],[27.0844,93.6053]],
   "WH5-NE_AS":[[22.5726,88.3639],[24.2,89.6],[25.5,90.8],[26.1445,91.7362]],
   "WH5-NE_MN":[[22.5726,88.3639],[23.5,90.4],[24.0,92.0],[24.8170,93.9368]],
@@ -86,7 +95,7 @@ const RP={
   "H_GUW-NE_MZ":[[26.1445,91.7362],[25.0,92.0],[23.7271,92.7176]],
   "H_GUW-NE_NL":[[26.1445,91.7362],[25.8,92.6],[25.6747,94.1100]],
   "H_GUW-NE_TR":[[26.1445,91.7362],[25.0,91.3],[23.8315,91.2868]]
-};
+});
 
 const keyFor=(a,b)=>`${a}-${b}`;
 const toLonLat=ll=>ll.map(p=>[p[1],p[0]]);
@@ -106,7 +115,7 @@ function expandIDsToLatLon(ids){
   } return out;
 }
 
-/* -------------------- canvas & drawing -------------------- */
+/* -------------------- trucks -------------------- */
 const trucks=[]; const truckNumberById=new Map();
 const SPEED_MULTIPLIER=8.6, MIN_GAP_PX=50, CROSS_GAP_PX=34, LANES_PER_ROUTE=3, LANE_WIDTH_PX=6.5, MIN_STEP=0.010;
 
@@ -117,7 +126,7 @@ function defaultPathIDs(o,d){
   return (o!=="WH4"&&d!=="WH4") ? [o,"WH4",d] : [o,d];
 }
 function hashStr(s){ let h=0; for(let i=0;i<s.length;i++){ h=((h<<5)-h)+s.charCodeAt(i); h|=0; } return Math.abs(h); }
-function segProject(pt){ return map.project({lng:pt[1],lat:pt[0]}); }
+const segProject=(pt)=>map.project({lng:pt[1],lat:pt[0]});
 
 function spawnTruck(tr, idx){
   const delayed=(tr.status||"").toLowerCase()==="delayed" || (tr.delay_hours||0)>0;
@@ -140,7 +149,8 @@ function spawnTruck(tr, idx){
   truckNumberById.set(tr.id, idx+1);
 }
 
-let overlay=null, ctx=null;
+/* -------------------- canvas + labels -------------------- */
+let overlay=null, ctx=null, __lastTS=performance.now(), __dt=1/60;
 function ensureCanvas(){
   overlay=document.getElementById("trucksCanvas");
   if(!overlay){
@@ -161,7 +171,6 @@ function resizeCanvas(){
 }
 window.addEventListener("resize",resizeCanvas);
 
-/* -------------------- warehouse icons + labels -------------------- */
 const WH_IMG=new Image(); let WH_READY=false;
 WH_IMG.onload=()=>{WH_READY=true;}; WH_IMG.onerror=()=>{WH_READY=false; debug("warehouse_iso.png missing at root");};
 WH_IMG.src=`${WAREHOUSE_ICON_SRC}?v=${Date.now()}`;
@@ -184,8 +193,7 @@ function drawWarehouses(){
   }
   if(SHOW_HUB){
     const c=HUB[HUB_ID]; const p=map.project({lng:c.lon,lat:c.lat}); const S=sizeByZoom(z);
-    if(WH_READY) ctx.drawImage(WH_IMG, p.x-S/2, p.y-S/2, S, S);
-    drawLabelBox(c.name, p, z);
+    if(WH_READY) ctx.drawImage(WH_IMG, p.x-S/2, p.y-S/2, S, S); drawLabelBox(c.name, p, z);
   }
   if(SHOW_NE){
     for(const id of Object.keys(NE7)){
@@ -195,13 +203,103 @@ function drawWarehouses(){
   }
   if(SHOW_HUB_CITY){
     const c=HUB_CITY.H_GUW; const p=map.project({lng:c.lon,lat:c.lat}); const S=sizeByZoom(z);
-    if(WH_READY) ctx.drawImage(WH_IMG, p.x-S/2, p.y-S/2, S, S);
-    drawLabelBox(c.name, p, z);
+    if(WH_READY) ctx.drawImage(WH_IMG, p.x-S/2, p.y-S/2, S, S); drawLabelBox(c.name, p, z);
   }
 }
 
-/* -------------------- trucks drawing -------------------- */
-const SPEED = { mult:SPEED_MULTIPLIER };
+/* -------------------- network + highlight layers -------------------- */
+let SHOW_HUB=false, SHOW_NE=false, SHOW_HUB_CITY=false;
+
+function networkGeoJSON(includeHub){
+  const keys=Object.keys(RP).filter(k=>
+    (includeHub || !k.includes("H_NAG")) &&
+    !k.includes("H_GUW") &&
+    !k.includes("NE_")
+  );
+  const features=keys.map(k=>({
+    type:"Feature",properties:{id:k},
+    geometry:{type:"LineString",coordinates:toLonLat(RP[k])}
+  }));
+
+  if (SHOW_NE && !SHOW_HUB_CITY) {
+    for (const id of Object.keys(NE7)) {
+      const k = `WH5-${id}`;
+      const coords = RP[k] ? RP[k] : getRoadLatLon("WH5", id);
+      features.push({ type:"Feature", properties:{id:k}, geometry:{type:"LineString",coordinates:toLonLat(coords)} });
+    }
+  } else if (SHOW_NE && SHOW_HUB_CITY) {
+    features.push({
+      type:"Feature", properties:{id:"WH5-H_GUW"},
+      geometry:{type:"LineString",coordinates:toLonLat(getRoadLatLon("WH5","H_GUW"))}
+    });
+    for (const id of Object.keys(NE7)) {
+      if (id === "NE_AS") continue;
+      const k = `H_GUW-${id}`;
+      const coords = RP[k] ? RP[k] : getRoadLatLon("H_GUW", id);
+      features.push({ type:"Feature", properties:{id:k}, geometry:{type:"LineString",coordinates:toLonLat(coords)} });
+    }
+  }
+  return {type:"FeatureCollection",features};
+}
+function ensureRoadLayers(){
+  const net=networkGeoJSON(SHOW_HUB);
+  if(!map.getSource("routes")) map.addSource("routes",{type:"geojson",data:net});
+  else map.getSource("routes").setData(net);
+
+  if(!map.getLayer("routes-halo")){
+    map.addLayer({id:"routes-halo",type:"line",source:"routes",
+      paint:{"line-color":"#9fb4ff","line-opacity":0.22,"line-width":7.5},
+      layout:{"line-cap":"round","line-join":"round"}});
+  }
+  if(!map.getLayer("routes-base")){
+    map.addLayer({id:"routes-base",type:"line",source:"routes",
+      paint:{"line-color":"#ffffff","line-opacity":0.9,"line-width":3.0},
+      layout:{"line-cap":"round","line-join":"round"}});
+  }
+
+  if(!map.getSource("alert")) map.addSource("alert",{type:"geojson",data:{type:"FeatureCollection",features:[]}})
+  if(!map.getLayer("alert-red")){
+    map.addLayer({id:"alert-red",type:"line",source:"alert",
+      paint:{"line-color":"#ff6b6b","line-opacity":0.98,"line-width":4.6},
+      layout:{"line-cap":"round","line-join":"round"}});
+  }
+
+  if(!map.getSource("fix")) map.addSource("fix",{type:"geojson",data:{type:"FeatureCollection",features:[]}})
+  if(!map.getLayer("fix-green")){
+    map.addLayer({id:"fix-green",type:"line",source:"fix",
+      paint:{"line-color":"#00d08a","line-opacity":0.98,"line-width":5.8},
+      layout:{"line-cap":"round","line-join":"round"}});
+  }
+
+  // Connection for Ahmedabad
+  if (!map.getSource("design")) {
+    map.addSource("design", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+  }
+  if (!map.getLayer("design-conn")) {
+    map.addLayer({
+      id: "design-conn", type: "line", source: "design",
+      paint: { "line-color": "#9fb4ff", "line-opacity": 0.95, "line-width": 4.0 },
+      layout: { "line-cap": "round", "line-join": "round" }
+    });
+  }
+  try { map.moveLayer("fix-green"); } catch(e) {}
+  try { map.moveLayer("design-conn"); } catch(e) {}
+}
+function refreshRoadNetwork(){
+  const src=map.getSource("routes");
+  if(src) src.setData(networkGeoJSON(SHOW_HUB));
+}
+
+function featureForRoute(ids){
+  return {type:"Feature",properties:{id:ids.join("-")},
+    geometry:{type:"LineString",coordinates:toLonLat(expandIDsToLatLon(ids))}};
+}
+function setSourceFeatures(srcId,features){
+  const src=map.getSource(srcId); if(!src) return;
+  src.setData({type:"FeatureCollection",features:features||[]});
+}
+
+/* -------------------- animation draw loop -------------------- */
 function drawVectorTruck(g,w,h,delayed,number){
   const trW=w*0.78,trH=h*0.72;
   g.fillStyle="rgba(0,0,0,.25)"; g.beginPath(); g.ellipse(0,trH*0.35,trW*0.9,trH*0.42,0,0,Math.PI*2); g.fill();
@@ -216,8 +314,6 @@ function drawVectorTruck(g,w,h,delayed,number){
   g.fillText(String(number), trW*0.18, -trH*0.2);
   g.fillStyle=delayed?"#ff3b30":"#00c853"; g.beginPath(); g.arc(trW*0.32,-trH*0.28,3.2,0,Math.PI*2); g.fill();
 }
-
-let __lastTS=performance.now(), __dt=1/60;
 function drawFrame(){
   if(!ctx) return;
   ctx.clearRect(0,0,overlay.width,overlay.height);
@@ -231,7 +327,7 @@ function drawFrame(){
     const segLenPx=Math.max(1,Math.hypot(bP.x-aP.x,bP.y-aP.y));
 
     if(!T.paused){
-      let pxPerSec=SPEED.mult*T.speed*(0.9+(map.getZoom()-4)*0.12);
+      let pxPerSec=SPEED_MULTIPLIER*T.speed*(0.9+(map.getZoom()-4)*0.12);
       let step=(pxPerSec*__dt)/segLenPx;
 
       const myProg=T.t*segLenPx; let minLead=Infinity;
@@ -286,7 +382,7 @@ const ChatUI = (() => {
   const muteBtn = document.getElementById('muteBtn');
   const clearBtn = document.getElementById('clearBtn');
 
-  let onCommand = null, muted=false;
+  let onCommand = null;
 
   function stamp(){ const d=new Date(); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
   function escapeHTML(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
@@ -295,6 +391,7 @@ const ChatUI = (() => {
     div.className=`msg ${kind}`; div.innerHTML=`${escapeHTML(text)}<small>${stamp()}</small>`;
     msgs.appendChild(div); msgs.scrollTop=msgs.scrollHeight+200;
   }
+
   function handleSend(){
     const raw=(input.value||'').trim(); if(!raw) return;
     pushBubble(raw,'user'); input.value='';
@@ -314,13 +411,13 @@ const ChatUI = (() => {
   send.addEventListener('click', handleSend);
   input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ handleSend(); }});
   muteBtn.addEventListener('click', ()=>{
-    muted = !muted;
-    Narrator.setMuted(muted);
-    muteBtn.textContent = muted ? '🔇 Unmute' : '🔊 Mute';
-    muteBtn.setAttribute('aria-pressed', String(muted));
+    const isMuted = muteBtn.textContent.startsWith('🔇');
+    Narrator.setMuted(!isMuted);
+    muteBtn.textContent = isMuted ? '🔊 Mute' : '🔇 Unmute';
+    muteBtn.setAttribute('aria-pressed', String(!isMuted));
   });
   clearBtn.addEventListener('click', ()=>{ msgs.innerHTML=''; });
-  document.addEventListener('keydown', (e)=>{ if((e.ctrlKey||e.metaKey) && (e.key==='m'||e.key==='M')){ e.preventDefault(); muteBtn.click(); }});
+  document.addEventListener('keydown',(e)=>{ if((e.ctrlKey||e.metaKey)&&(e.key==='m'||e.key==='M')){ e.preventDefault(); muteBtn.click(); }});
 
   return {
     appendSystem: (t)=>pushBubble(t, 'system'),
@@ -331,26 +428,20 @@ const ChatUI = (() => {
 
 /* ---- Narrator ---- */
 const Narrator = (() => {
-  let muted = false; let currentRun = 0;
+  let muted = false, currentRun = 0;
   const PASS_IDLE_GAP_MS = 700;
-
   function newRunToken(){ currentRun += 1; return currentRun; }
   function clearTTS(){ try{ synth?.cancel?.(); }catch(e){} }
   function wait(ms){ return new Promise(res=>setTimeout(res, ms)); }
-
   function speakOnceAsync(text, rate=0.95, runToken){
     return new Promise((resolve) => {
       if(muted || !synth || !text || runToken!==currentRun){ return resolve(); }
       const u = new SpeechSynthesisUtterance(String(text));
-      if(VOICE) u.voice = VOICE;
-      u.rate = rate; u.pitch = 1.0; u.volume = 1.0;
-      u.onend = () => resolve();
-      u.onerror = () => resolve();
-      synth.speak(u);
+      if(VOICE) u.voice = VOICE; u.rate = rate; u.pitch = 1.0; u.volume = 1.0;
+      u.onend = () => resolve(); u.onerror = () => resolve(); synth.speak(u);
     });
   }
-  async function queueOnce(lines, gap=950, rate=0.95, runToken, preClear=false){
-    if(preClear){ clearTTS(); }
+  async function queueOnce(lines, gap=950, rate=0.95, runToken){
     for(const line of lines){
       if(runToken!==currentRun) return;
       ChatUI.appendSystem(line);
@@ -359,32 +450,88 @@ const Narrator = (() => {
       if(gap>0) await wait(gap);
     }
   }
-
   return {
     sayLinesTwice: async (lines, gap=950, rate=0.95)=>{
-      const run = newRunToken();
-      clearTTS();
-      await queueOnce(lines, gap, rate, run, false);
+      const run = newRunToken(); clearTTS();
+      await queueOnce(lines, gap, rate, run);
       if(run!==currentRun) return;
-      await wait(PASS_IDLE_GAP_MS);
+      await new Promise(r=>setTimeout(r, PASS_IDLE_GAP_MS));
       if(run!==currentRun) return;
-      await queueOnce(lines, gap, rate, run, false);
+      await queueOnce(lines, gap, rate, run);
     },
     sayLinesOnce: async (lines, gap=950, rate=0.95)=>{
-      const run = newRunToken();
-      clearTTS();
-      await queueOnce(lines, gap, rate, run, false);
+      const run = newRunToken(); clearTTS();
+      await queueOnce(lines, gap, rate, run);
     },
-    sayOnce: (line)=>{
-      const run = newRunToken();
-      clearTTS();
-      ChatUI.appendSystem(line);
-      speakOnceAsync(line, 0.95, run);
-    },
+    sayOnce: (line)=>{ const run=newRunToken(); clearTTS(); ChatUI.appendSystem(line); speakOnceAsync(line, 0.95, run); },
     clear: ()=>{ newRunToken(); clearTTS(); },
     setMuted: (m)=>{ muted = !!m; if(muted){ newRunToken(); clearTTS(); } }
   };
 })();
+
+/* -------------------- scenarios -------------------- */
+const DEFAULT_BEFORE={
+  warehouses:Object.keys(CITY).map(id=>({id,location:CITY[id].name.split("—")[1].trim(),inventory:500})),
+  trucks:[
+    {id:"T1", origin:"WH1", destination:"WH2", status:"On-Time", delay_hours:0, units:3, speed_kmph:55, od:"WH1-WH2"},
+    {id:"T2", origin:"WH2", destination:"WH3", status:"On-Time", delay_hours:0, units:3, speed_kmph:55, od:"WH2-WH3"},
+    {id:"T3", origin:"WH3", destination:"WH1", status:"On-Time", delay_hours:0, units:3, speed_kmph:55, od:"WH3-WH1"}
+  ],
+  policies:{ capacity_units:10, default_speed_kmph:55, use_hub:false }
+};
+let SCN_BEFORE=null, SCN_AFTER=null, SCN_HUB=null;
+let SCN_CITY_BASE=null, SCN_CITY_AFTER=null;
+
+/* -------------------- Disruption steps -------------------- */
+const STEPS=[
+  {id:"D1",route:["WH1","WH2"],reroute:[["WH1","WH4"],["WH4","WH2"]],
+   cause:["Disruption one.","Delhi to Mumbai corridor is closed near Rajasthan.","All trucks on this corridor are safely paused.","Please click the Correct button to apply the AI fix."],
+   fix:["AI has corrected the disruption.","Traffic is rerouted via Hyderabad: Delhi to Hyderabad, then Hyderabad to Mumbai.","Green links show the new safe detour. Flows are resuming."]},
+  {id:"D2",route:["WH1","WH4"],reroute:[["WH1","WH2"],["WH2","WH4"]],
+   cause:["Disruption two.","Delhi to Hyderabad is impacted by a long work zone.","All trucks on this corridor are paused in place.","Click Correct to rebalance via Mumbai."],
+   fix:["AI has corrected the disruption.","We are diverting Delhi to Mumbai, and then Mumbai to Hyderabad.","Green segments confirm the balanced detour is active."]},
+  {id:"D3",route:["WH5","WH2"],reroute:[["WH5","WH4"],["WH4","WH2"]],
+   cause:["Disruption three.","Kolkata to Mumbai is constrained by flood-prone sections.","All trucks on this link are held.","Click Correct to divert through Hyderabad."],
+   fix:["AI has corrected the disruption.","We route Kolkata to Hyderabad and onward to Mumbai.","Green links indicate the detour now in effect."]},
+  {id:"D4",route:["WH2","WH3"],reroute:[["WH2","WH4"],["WH4","WH3"]],
+   cause:["Disruption four.","Mumbai to Bangalore faces a crash-related closure.","All trucks on this corridor are paused.","Click Correct to go via Hyderabad."],
+   fix:["AI has corrected the disruption.","Detour is Mumbai to Hyderabad, then Hyderabad to Bangalore.","Green links show the new route. Queues are clearing."]},
+  {id:"D5",route:["WH5","WH3"],reroute:[["WH5","WH4"],["WH4","WH3"]],
+   cause:["Final disruption.","Kolkata to Bangalore is blocked due to a landslide risk.","All trucks on this corridor are paused.","Click Correct to proceed with the safe detour."],
+   fix:["AI has corrected the disruption.","We divert Kolkata to Hyderabad and then Hyderabad to Bangalore.","Green links confirm stable flow on the detour."]}
+];
+
+/* -------------------- pause / reroute control -------------------- */
+function odMatch(ids,o,d){ const a=ids[0], b=ids[ids.length-1]; return (a===o&&b===d)||(a===d&&b===o); }
+function setTruckPath(T,latlon,toMid=false){ if(!latlon||latlon.length<2) return; T.latlon=latlon; T.seg=0; T.dir=1; T.t=toMid?0.5:0.0; }
+function pauseAllOnRoute(step){
+  const ids=step.route; const latlon=expandIDsToLatLon(ids);
+  for(const T of trucks){
+    const baseIDs=defaultPathIDs(T.origin,T.dest);
+    if(odMatch(baseIDs, ids[0], ids[1])){
+      if(!T.savedPath) T.savedPath={ latlon:[...T.latlon], seg:T.seg, t:T.t, dir:T.dir };
+      setTruckPath(T, latlon, true); T.paused=true;
+    }
+  }
+}
+function unpauseAll(resetToSaved){
+  for(const T of trucks){
+    if(T.paused){
+      if(resetToSaved && T.savedPath) setTruckPath(T, T.savedPath.latlon, false);
+      T.paused=false; T.savedPath=null;
+    }
+  }
+}
+function reroutePaused(step){
+  const full=step.reroute?.length ? expandIDsToLatLon(step.reroute.flat()) : null; if(!full) return 0;
+  let released=0;
+  for(const T of trucks){
+    if(!T.paused) continue;
+    setTruckPath(T, full, false);
+    T.paused=false; T.savedPath=null; released++;
+  }
+  return released;
+}
 
 /* -------------------- stats helpers -------------------- */
 const baseStats={}; let beforeStats=null; let afterStats=null; let hubStats=null;
@@ -448,7 +595,9 @@ function summarizeScenario(scn){
 
   let samples=[];
   if(useHub || (scn.trucks||[]).some(t=>t.origin.startsWith("H_")||t.destination.startsWith("H_"))){
-    for(const t of (scn.trucks||[])) samples.push({min:truckDriveMin(t, scn)+dwell+batch, w:t.units||1});
+    for(const t of (scn.trucks||[])){
+      samples.push({min:truckDriveMin(t, scn)+dwell+batch, w:t.units||1});
+    }
   } else {
     for(const t of (scn.trucks||[])) samples.push({min:truckDriveMin(t, scn), w:t.units||1});
   }
@@ -475,132 +624,48 @@ function ppDeltaHuman(basePct, nowPct){
   return {dir, pp:Math.abs(d)};
 }
 
-/* -------------------- base network + highlight layers -------------------- */
-let SHOW_HUB=false;      // Nagpur spokes & marker
-let SHOW_NE=false;       // Seven Sisters
-let SHOW_HUB_CITY=false; // Guwahati hub marker
-
-function networkGeoJSON(includeHub){
-  const keys=Object.keys(RP).filter(k=>
-      (includeHub || !k.includes("H_NAG")) &&
-      !k.includes("H_GUW") &&
-      !k.includes("NE_")
-  );
-  const features=keys.map(k=>({
-    type:"Feature",properties:{id:k},geometry:{type:"LineString",coordinates:toLonLat(RP[k])}
-  }));
-
-  if (SHOW_NE && !SHOW_HUB_CITY) {
-    for (const id of Object.keys(NE7)) {
-      const k = `WH5-${id}`;
-      const coords = RP[k] ? RP[k] : getRoadLatLon("WH5", id);
-      features.push({ type:"Feature", properties:{id:k}, geometry:{type:"LineString",coordinates:toLonLat(coords)} });
-    }
-  } else if (SHOW_NE && SHOW_HUB_CITY) {
-    features.push({
-      type:"Feature", properties:{id:"WH5-H_GUW"},
-      geometry:{type:"LineString",coordinates:toLonLat(getRoadLatLon("WH5","H_GUW"))}
-    });
-    for (const id of Object.keys(NE7)) {
-      if (id === "NE_AS") continue;
-      const k = `H_GUW-${id}`;
-      const coords = RP[k] ? RP[k] : getRoadLatLon("H_GUW", id);
-      features.push({ type:"Feature", properties:{id:k}, geometry:{type:"LineString",coordinates:toLonLat(coords)} });
-    }
-  }
-  return {type:"FeatureCollection",features};
-}
-function ensureRoadLayers(){
-  const net=networkGeoJSON(SHOW_HUB);
-  if(!map.getSource("routes")) map.addSource("routes",{type:"geojson",data:net});
-  else map.getSource("routes").setData(net);
-
-  if(!map.getLayer("routes-halo")){
-    map.addLayer({id:"routes-halo",type:"line",source:"routes",
-      paint:{"line-color":"#9fb4ff","line-opacity":0.22,"line-width":7.5},
-      layout:{"line-cap":"round","line-join":"round"}});
-  }
-  if(!map.getLayer("routes-base")){
-    map.addLayer({id:"routes-base",type:"line",source:"routes",
-      paint:{"line-color":"#ffffff","line-opacity":0.9,"line-width":3.0},
-      layout:{"line-cap":"round","line-join":"round"}});
-  }
-
-  if(!map.getSource("alert")) map.addSource("alert",{type:"geojson",data:{type:"FeatureCollection",features:[]}})
-  if(!map.getLayer("alert-red")){
-    map.addLayer({id:"alert-red",type:"line",source:"alert",
-      paint:{"line-color":"#ff6b6b","line-opacity":0.98,"line-width":4.6},
-      layout:{"line-cap":"round","line-join":"round"}});
-  }
-
-  if(!map.getSource("fix")) map.addSource("fix",{type:"geojson",data:{type:"FeatureCollection",features:[]}})
-  if(!map.getLayer("fix-green")){
-    map.addLayer({id:"fix-green",type:"line",source:"fix",
-      paint:{"line-color":"#00d08a","line-opacity":0.98,"line-width":5.8},
-      layout:{"line-cap":"round","line-join":"round"}});
-  }
-
-  // Ahmedabad connection layer
-  if (!map.getSource("design")) {
-    map.addSource("design", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-  }
-  if (!map.getLayer("design-conn")) {
-    map.addLayer({
-      id: "design-conn", type: "line", source: "design",
-      paint: { "line-color": "#9fb4ff", "line-opacity": 0.95, "line-width": 4.0 },
-      layout: { "line-cap": "round", "line-join": "round" }
-    });
-  }
-
-  try { map.moveLayer("fix-green"); } catch(e) {}
-  try { map.moveLayer("design-conn"); } catch(e) {}
-}
-function refreshRoadNetwork(){
-  const src=map.getSource("routes");
-  if(src) src.setData(networkGeoJSON(SHOW_HUB));
-}
-
-/* -------------------- source helpers -------------------- */
-function featureForRoute(ids){
-  return {type:"Feature",properties:{id:ids.join("-")},
-    geometry:{type:"LineString",coordinates:toLonLat(expandIDsToLatLon(ids))}};
-}
-function setSourceFeatures(srcId,features){
-  const src=map.getSource(srcId); if(!src) return;
-  src.setData({type:"FeatureCollection",features:features||[]});
-}
-
-/* -------------------- Design Warehouse helpers -------------------- */
-let __designImgMarker = null, __ahdLogoMarker = null, __ahdLabelMarker = null, __orbitTimer = null;
+/* -------------------- Design Warehouse helpers (wrapper + camera restore) -------------------- */
+let __designImgMarker = null, __ahdLogoMarker = null, __ahdLabelMarker = null;
+let __orbitTimer = null; // kept for parity (unused now)
+let __savedView = null;  // camera snapshot before zoom
 
 function addDesignImageMarker() {
   removeDesignArtifacts();
-  const el = document.createElement("div");
-  el.className = "design-img";
-  // exactly 2 rotations, 10s each (total 20s)
-  el.style.animation = "spin-slow 10s linear 2";
-  el.style.backgroundImage = `url("${DESIGN_IMG_URL}?v=${Date.now()}")`;
-  __designImgMarker = new maplibregl.Marker({ element: el, anchor: "center" })
+  const wrapper = document.createElement("div");
+  wrapper.className = "__design-wrapper";
+  wrapper.style.cssText = `width:0;height:0;pointer-events:none;`;
+
+  const inner = document.createElement("div");
+  inner.style.cssText = `
+    width: 260px; height: 260px;
+    border-radius: 14px;
+    background-image: url("${DESIGN_IMG_URL}?v=${Date.now()}");
+    background-size: cover; background-position: center;
+    border: 1px solid rgba(255,255,255,.30);
+    box-shadow: 0 12px 30px rgba(0,0,0,.35);
+    opacity: .95;
+    mix-blend-mode: soft-light;
+    -webkit-mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 72%, transparent 100%);
+    mask-image: radial-gradient(ellipse 78% 78% at 50% 50%, #000 72%, transparent 100%);
+    filter: saturate(.96) contrast(.96);
+  `;
+  wrapper.appendChild(inner);
+
+  __designImgMarker = new maplibregl.Marker({ element: wrapper, anchor: "center" })
     .setLngLat([AHD.lon, AHD.lat])
     .addTo(map);
 }
 function addAhmedabadLogoMarker() {
-  const logo = document.createElement("div");
-  logo.className = "wh-logo";
+  const logo = document.createElement("div"); logo.className = "wh-logo";
   __ahdLogoMarker = new maplibregl.Marker({ element: logo, anchor: "bottom" })
-    .setLngLat([AHD.lon, AHD.lat])
-    .addTo(map);
+    .setLngLat([AHD.lon, AHD.lat]).addTo(map);
 
-  const lab = document.createElement("div");
-  lab.className = "wh-label";
-  lab.textContent = AHD.name;
+  const lab = document.createElement("div"); lab.className = "wh-label"; lab.textContent = AHD.name;
   __ahdLabelMarker = new maplibregl.Marker({ element: lab, anchor: "top" })
-    .setLngLat([AHD.lon, AHD.lat])
-    .addTo(map);
+    .setLngLat([AHD.lon, AHD.lat]).addTo(map);
 }
 function setAhmedabadConnection(toId = CONNECT_TO) {
-  const dst = CITY[toId];
-  if (!dst) return;
+  const dst = CITY[toId]; if (!dst) return;
   const feature = {
     type: "Feature", properties: { id: `AHD-${toId}` },
     geometry: { type: "LineString", coordinates: [[AHD.lon, AHD.lat], [dst.lon, dst.lat]] }
@@ -620,129 +685,75 @@ function removeDesignArtifacts() {
   clearAhmedabadConnection();
 }
 
+// helper: visual centering with left chat dock width accounted
+function computeFlyOffset() {
+  const chatEl = document.getElementById('chat');
+  const w = chatEl ? chatEl.offsetWidth : 0;
+  return [Math.round(w * 0.45), 0];
+}
+
 async function runDesignWarehouse() {
   Narrator.clear(); clearAlert(); clearFix();
   SHOW_HUB=false; SHOW_NE=false; SHOW_HUB_CITY=false; refreshRoadNetwork();
   removeDesignArtifacts();
 
-  // Narration (angles — not angel)
+  // Save original camera to restore after demo
+  __savedView = {
+    center: map.getCenter(),
+    zoom: map.getZoom(),
+    pitch: map.getPitch(),
+    bearing: map.getBearing()
+  };
+
+  // Narration with throughput (units ~ tons)
+  const inboundTonnage  = 4 * (DEFAULT_CAPACITY_UNITS||10);
+  const outboundTonnage = 3 * (DEFAULT_CAPACITY_UNITS||10);
   Narrator.sayLinesOnce([
     "If you want to design a warehouse for four inbound trucks and three outbound trucks at the Aslali industrial area in Ahmedabad,",
-    "this is the location. Let me zoom in and show the design from multiple angles."
-  ], 850, 0.95);
+    `each truck carries about ${DEFAULT_CAPACITY_UNITS} tons. That’s roughly ${inboundTonnage} tons inbound and ${outboundTonnage} tons outbound per cycle.`,
+    "This is the location. Let me zoom in and show the design from multiple angles."
+  ], 900, 0.95);
 
   addDesignImageMarker();
 
-  // IMPORTANT: no offset — center exactly on the coordinate
+  const offset = computeFlyOffset();
   map.flyTo({
     center: [AHD.lon, AHD.lat],
     zoom: DESIGN_FLY_ZOOM,
     pitch: DESIGN_PITCH,
     bearing: 0,
-    duration: 2800
+    offset,
+    duration: 2500
   });
 
-  // Orbit for exactly 2×10s (CSS image also spins 2×)
-  const DESIGN_TOTAL_MS = DESIGN_ROTATIONS * DESIGN_ROT_MS;
-  const t0 = Date.now();
-  let bearing = 15;
-  __orbitTimer = setInterval(() => {
-    map.easeTo({
-      center: [AHD.lon, AHD.lat],
-      zoom: DESIGN_FLY_ZOOM,
-      pitch: DESIGN_PITCH,
-      bearing: (bearing = (bearing + 360 * (DESIGN_STEP_MS / DESIGN_ROT_MS)) % 360),
-      duration: DESIGN_STEP_MS - 200
-    });
-    if (Date.now() - t0 > DESIGN_TOTAL_MS) {
-      clearInterval(__orbitTimer); __orbitTimer = null;
-      setTimeout(finishDesignWarehouse, 600);
-    }
-  }, DESIGN_STEP_MS);
+  // Hover for ~10 seconds to let the audience inspect
+  setTimeout(() => {
+    finishDesignWarehouse();
+  }, DESIGN_HOVER_MS);
 }
 function finishDesignWarehouse() {
   if (__designImgMarker) { __designImgMarker.remove(); __designImgMarker = null; }
   addAhmedabadLogoMarker();
   setAhmedabadConnection(CONNECT_TO);
 
-  const b = new maplibregl.LngLatBounds();
-  Object.values(CITY).forEach(c => b.extend([c.lon, c.lat]));
-  b.extend([AHD.lon, AHD.lat]);
-  map.fitBounds(b, { padding: { top: 60, left: 60, right: 320, bottom: 60 }, duration: 1800, maxZoom: 6.8 });
-
   Narrator.sayLinesOnce([
-    "We’ve inspected the proposed layout.",
-    "Now returning to the full network view. Ahmedabad is added with a warehouse marker and connected to the network."
+    "Inspection complete.",
+    "Returning to the original network view."
   ], 850, 0.95);
-}
 
-/* -------------------- pause / reroute control -------------------- */
-function odMatch(ids,o,d){ const a=ids[0], b=ids[ids.length-1]; return (a===o&&b===d)||(a===d&&b===o); }
-function setTruckPath(T,latlon,toMid=false){ if(!latlon||latlon.length<2) return; T.latlon=latlon; T.seg=0; T.dir=1; T.t=toMid?0.5:0.0; }
-function pauseAllOnRoute(step){
-  const ids=step.route; const latlon=expandIDsToLatLon(ids);
-  for(const T of trucks){
-    const baseIDs=defaultPathIDs(T.origin,T.dest);
-    if(odMatch(baseIDs, ids[0], ids[1])){
-      if(!T.savedPath) T.savedPath={ latlon:[...T.latlon], seg:T.seg, t:T.t, dir:T.dir };
-      setTruckPath(T, latlon, true);
-      T.paused=true;
-    }
+  // Restore EXACT original camera (prevents angle drift)
+  if (__savedView) {
+    map.flyTo({
+      center: __savedView.center,
+      zoom: __savedView.zoom,
+      pitch: __savedView.pitch,
+      bearing: __savedView.bearing,
+      duration: 1800
+    });
   }
 }
-function unpauseAll(resetToSaved){
-  for(const T of trucks){
-    if(T.paused){
-      if(resetToSaved && T.savedPath) setTruckPath(T, T.savedPath.latlon, false);
-      T.paused=false; T.savedPath=null;
-    }
-  }
-}
-function reroutePaused(step){
-  const full=step.reroute?.length ? expandIDsToLatLon(step.reroute.flat()) : null;
-  if(!full) return 0;
-  let released=0;
-  for(const T of trucks){
-    if(!T.paused) continue;
-    setTruckPath(T, full, false);
-    T.paused=false; T.savedPath=null; released++;
-  }
-  return released;
-}
 
-/* -------------------- scenarios -------------------- */
-const DEFAULT_BEFORE={
-  warehouses:Object.keys(CITY).map(id=>({id,location:CITY[id].name.split("—")[1].trim(),inventory:500})),
-  trucks:[
-    {id:"T1", origin:"WH1", destination:"WH2", status:"On-Time", delay_hours:0, units:3, speed_kmph:55, od:"WH1-WH2"},
-    {id:"T2", origin:"WH2", destination:"WH3", status:"On-Time", delay_hours:0, units:3, speed_kmph:55, od:"WH2-WH3"},
-    {id:"T3", origin:"WH3", destination:"WH1", status:"On-Time", delay_hours:0, units:3, speed_kmph:55, od:"WH3-WH1"}
-  ],
-  policies:{ capacity_units:10, default_speed_kmph:55, use_hub:false }
-};
-let SCN_BEFORE=null, SCN_AFTER=null, SCN_HUB=null;
-let SCN_CITY_BASE=null, SCN_CITY_AFTER=null;
-
-const STEPS=[
-  {id:"D1",route:["WH1","WH2"],reroute:[["WH1","WH4"],["WH4","WH2"]],
-   cause:["Disruption one.","Delhi to Mumbai corridor is closed near Rajasthan.","All trucks on this corridor are safely paused.","Please click the Correct button to apply the AI fix."],
-   fix:["AI has corrected the disruption.","Traffic is rerouted via Hyderabad: Delhi to Hyderabad, then Hyderabad to Mumbai.","Green links show the new safe detour. Flows are resuming."]},
-  {id:"D2",route:["WH1","WH4"],reroute:[["WH1","WH2"],["WH2","WH4"]],
-   cause:["Disruption two.","Delhi to Hyderabad is impacted by a long work zone.","All trucks on this corridor are paused in place.","Click Correct to rebalance via Mumbai."],
-   fix:["AI has corrected the disruption.","We are diverting Delhi to Mumbai, and then Mumbai to Hyderabad.","Green segments confirm the balanced detour is active."]},
-  {id:"D3",route:["WH5","WH2"],reroute:[["WH5","WH4"],["WH4","WH2"]],
-   cause:["Disruption three.","Kolkata to Mumbai is constrained by flood-prone sections.","All trucks on this link are held.","Click Correct to divert through Hyderabad."],
-   fix:["AI has corrected the disruption.","We route Kolkata to Hyderabad and onward to Mumbai.","Green links indicate the detour now in effect."]},
-  {id:"D4",route:["WH2","WH3"],reroute:[["WH2","WH4"],["WH4","WH3"]],
-   cause:["Disruption four.","Mumbai to Bangalore faces a crash-related closure.","All trucks on this corridor are paused.","Click Correct to go via Hyderabad."],
-   fix:["AI has corrected the disruption.","Detour is Mumbai to Hyderabad, then Hyderabad to Bangalore.","Green links show the new route. Queues are clearing."]},
-  {id:"D5",route:["WH5","WH3"],reroute:[["WH5","WH4"],["WH4","WH3"]],
-   cause:["Final disruption.","Kolkata to Bangalore is blocked due to a landslide risk.","All trucks on this corridor are paused.","Click Correct to proceed with the safe detour."],
-   fix:["AI has corrected the disruption.","We divert Kolkata to Hyderabad and then Hyderabad to Bangalore.","Green links confirm stable flow on the detour."]}
-];
-
-/* -------------------- Disrupt/Correct/Normal -------------------- */
-let mode="normal"; let currentStepIdx=-1;
+/* -------------------- Disrupt/Correct/Normal + Hub/City -------------------- */
 function setAlert(ids){ setSourceFeatures("alert",[featureForRoute(ids)]); }
 function clearAlert(){ setSourceFeatures("alert",[]); }
 function setFix(pairs){ setSourceFeatures("fix",(pairs||[]).map(pair=>featureForRoute(pair))); }
@@ -753,27 +764,30 @@ function activateTrucksFromScenario(scn){
   (scn.trucks||[]).forEach((t,i)=>spawnTruck(t,i));
 }
 
+/* merge helpers */
+function prefixTruckIds(trucksList, prefix){ return (trucksList||[]).map((t, i)=>({ ...t, id: `${prefix}${t.id || i}` })); }
+function buildCombinedScenario(baseScn, overlayScn, overlayPrefix){
+  const base = baseScn || {warehouses:[], trucks:[], policies:{}};
+  const over = overlayScn || {warehouses:[], trucks:[], policies:{}};
+  const trucksMerged = [ ...(base.trucks||[]), ...prefixTruckIds(over.trucks||[], overlayPrefix||"NE_") ];
+  return { warehouses: base.warehouses, trucks: trucksMerged, policies: base.policies || {} };
+}
+
+let mode="normal"; let currentStepIdx=-1;
 function startDisrupt(){
-  if(mode==="disrupt"){
-    Narrator.sayLinesTwice(["A disruption is already active. Please click the Correct button to proceed."],900,0.92);
-    return;
-  }
+  if(mode==="disrupt"){ Narrator.sayLinesTwice(["A disruption is already active. Please click the Correct button to proceed."],900,0.92); return; }
   removeDesignArtifacts();
   SHOW_HUB=false; SHOW_NE=false; SHOW_HUB_CITY=false; refreshRoadNetwork();
   currentStepIdx = (currentStepIdx + 1) % STEPS.length;
   const step=STEPS[currentStepIdx];
   clearFix(); setAlert(step.route);
   pauseAllOnRoute(step);
-
   renderStatsTable(beforeStats);
   Narrator.sayLinesTwice([...step.cause,"Once you are ready, please click the Correct button."], 950, 0.9);
   mode="disrupt";
 }
 function applyCorrect(){
-  if(mode!=="disrupt"){
-    Narrator.sayLinesTwice(["No active disruption. Click Disrupt first."],800,0.95);
-    return;
-  }
+  if(mode!=="disrupt"){ Narrator.sayLinesTwice(["No active disruption. Click Disrupt first."],800,0.95); return; }
   removeDesignArtifacts();
   SHOW_HUB=false; SHOW_NE=false; SHOW_HUB_CITY=false; refreshRoadNetwork();
   const step=STEPS[currentStepIdx];
@@ -793,49 +807,35 @@ function backToNormal(){
   Narrator.sayLinesTwice(["Returning to normal operations. All corridors white and flowing."], 900, 0.95);
   mode="normal";
 }
-
-/* -------------------- Hub & City -------------------- */
 function hubAddition(){
-  if(!SCN_HUB){
-    Narrator.sayLinesTwice(["Hub scenario not found in scenario_after.json (key 'hub')."], 800, 0.95);
-    return;
-  }
-  Narrator.clear(); clearAlert(); clearFix();
-  removeDesignArtifacts();
-
-  SHOW_NE=false; SHOW_HUB_CITY=false;
-  SHOW_HUB=true; refreshRoadNetwork();
-
+  if(!SCN_HUB){ Narrator.sayLinesTwice(["Hub scenario not found in scenario_after.json (key 'hub')."], 800, 0.95); return; }
+  Narrator.clear(); clearAlert(); clearFix(); removeDesignArtifacts();
+  SHOW_NE=false; SHOW_HUB_CITY=false; SHOW_HUB=true; refreshRoadNetwork();
   activateTrucksFromScenario(SCN_HUB);
   renderStatsTable(hubStats||beforeStats);
 
   const baseS = summarizeScenario(SCN_BEFORE);
   const hubS  = summarizeScenario(SCN_HUB);
-
   const mov = pctDeltaHuman(baseS.movements, hubS.movements);
   const km  = pctDeltaHuman(baseS.truckKm, hubS.truckKm);
   const util= ppDeltaHuman(baseS.utilization, hubS.utilization);
 
-  const lines=[
+  Narrator.sayLinesTwice([
     "Hub Addition engaged — evaluating Nagpur as a consolidation hub.",
     `Truck movements ${mov.dir} by ${mov.pct} percent, from ${fmtInt(baseS.movements)} to ${fmtInt(hubS.movements)}.`,
     `Distance traveled ${km.dir} by ${km.pct} percent, from ${fmtKm(baseS.truckKm)} to ${fmtKm(hubS.truckKm)}.`,
     `Average utilization ${util.dir} by ${Math.abs(util.pp)} percentage points, from ${baseS.utilization}% to ${hubS.utilization}%.`
-  ];
-  Narrator.sayLinesTwice(lines, 850, 0.92);
+  ], 850, 0.92);
   mode="hub";
 }
-
 async function cityAddition(){
   if(!SCN_CITY_BASE || !SCN_CITY_AFTER){
     Narrator.sayLinesOnce(["City Addition data not found. Please check 'city.baseline' in scenario_before.json and 'city.proposal' in scenario_after.json."], 800, 0.95);
     return;
   }
-  Narrator.clear(); clearAlert(); clearFix();
-  removeDesignArtifacts();
+  Narrator.clear(); clearAlert(); clearFix(); removeDesignArtifacts();
 
-  SHOW_HUB=false; SHOW_HUB_CITY=false;
-  SHOW_NE=true; refreshRoadNetwork();
+  SHOW_HUB=false; SHOW_HUB_CITY=false; SHOW_NE=true; refreshRoadNetwork();
   const COMBINED_CITY_BASE = buildCombinedScenario(SCN_BEFORE, SCN_CITY_BASE, "NEB_");
   activateTrucksFromScenario(COMBINED_CITY_BASE);
 
@@ -843,7 +843,7 @@ async function cityAddition(){
   renderStatsTable(cityBaseStats, NE_IDS);
 
   const baseS = summarizeScenario(SCN_CITY_BASE);
-  const baselineLines = [
+  await Narrator.sayLinesOnce([
     "Opening service to the Seven Sisters (Arunachal Pradesh, Assam, Manipur, Meghalaya, Mizoram, Nagaland, Tripura).",
     "Baseline: Serving from the existing network without a Guwahati hub. Other corridors continue as-is.",
     `Baseline movements (North-East flows considered): ${fmtInt(baseS.movements)}.`,
@@ -851,12 +851,10 @@ async function cityAddition(){
     `Average O→D time (North-East flows): ${fmtHours(baseS.meanEta)}.`,
     `90th percentile ETA (North-East flows): ${fmtHours(baseS.p90Eta)}.`,
     `Average truck utilization (North-East flows): ${baseS.utilization} percent.`
-  ];
-  await Narrator.sayLinesOnce(baselineLines, 900, 0.92);
+  ], 900, 0.92);
 
   await new Promise(r=>setTimeout(r, 900));
-  SHOW_HUB=false; SHOW_NE=true; SHOW_HUB_CITY=true;
-  refreshRoadNetwork();
+  SHOW_HUB=false; SHOW_NE=true; SHOW_HUB_CITY=true; refreshRoadNetwork();
 
   const COMBINED_CITY_PROPOSAL = buildCombinedScenario(SCN_BEFORE, SCN_CITY_AFTER, "NEP_");
   const hasWH5GUW = (SCN_CITY_AFTER.trucks||[]).some(t=>
@@ -880,7 +878,7 @@ async function cityAddition(){
   const p90  = pctDeltaHuman(baseS.p90Eta,  afterS.p90Eta);
   const util = ppDeltaHuman(baseS.utilization, afterS.utilization);
 
-  const proposalLines = [
+  await Narrator.sayLinesOnce([
     "Proposal: Add Guwahati hub and reassign the Seven Sisters to it (fan-out from Guwahati).",
     "Other corridors continue concurrently. Kolkata ↔ Guwahati movements are active.",
     `Truck movements (North-East flows) ${mov.dir} by ${mov.pct}% — from ${fmtInt(baseS.movements)} to ${fmtInt(afterS.movements)}.`,
@@ -888,24 +886,17 @@ async function cityAddition(){
     `Average O→D time (North-East flows) ${mean.dir} by ${toHours1(Math.abs(afterS.meanEta-baseS.meanEta))} hours — from ${fmtHours(baseS.meanEta)} to ${fmtHours(afterS.meanEta)}.`,
     `P90 ETA (North-East flows) ${p90.dir} by ${toHours1(Math.abs(afterS.p90Eta-baseS.p90Eta))} hours — from ${fmtHours(baseS.p90Eta)} to ${fmtHours(afterS.p90Eta)}.`,
     `Average truck utilization (North-East flows) ${util.dir} by ${Math.abs(util.pp)} pp — from ${baseS.utilization}% to ${afterS.utilization}%.`
-  ];
-  await Narrator.sayLinesOnce(proposalLines, 900, 0.92);
+  ], 900, 0.92);
 
   mode="city";
 }
 
-/* -------------------- merge helpers -------------------- */
-function prefixTruckIds(trucksList, prefix){
-  return (trucksList||[]).map((t, i)=>({ ...t, id: `${prefix}${t.id || i}` }));
-}
-function buildCombinedScenario(baseScn, overlayScn, overlayPrefix){
-  const base = baseScn || {warehouses:[], trucks:[], policies:{}};
-  const over = overlayScn || {warehouses:[], trucks:[], policies:{}};
-  const trucksMerged = [
-    ...(base.trucks||[]),
-    ...prefixTruckIds(over.trucks||[], overlayPrefix||"NE_")
-  ];
-  return { warehouses: base.warehouses, trucks: trucksMerged, policies: base.policies || {} };
+/* -------------------- camera helper -------------------- */
+function fitToBoundsOfAnchors(ids){
+  const b=new maplibregl.LngLatBounds();
+  ids.forEach(id=>{ const a=getAnchor(id); if(a) b.extend([a.lon,a.lat]); });
+  if(b.isEmpty()) return;
+  map.fitBounds(b,{padding:{top:60,left:60,right:320,bottom:60},duration:800,maxZoom:6.8});
 }
 
 /* -------------------- boot -------------------- */
@@ -930,33 +921,13 @@ const mapReady=new Promise(res=>map.on("load",res));
   if(btnAfter)  btnAfter.textContent="Correct";
 
   let btnNormal=document.getElementById("btnNormal");
-  if(!btnNormal){
-    btnNormal=document.createElement("button");
-    btnNormal.id="btnNormal"; btnNormal.textContent="Normal";
-    btnNormal.style.marginLeft="8px";
-    ui.appendChild(btnNormal);
-  }
+  if(!btnNormal){ btnNormal=document.createElement("button"); btnNormal.id="btnNormal"; btnNormal.textContent="Normal"; btnNormal.style.marginLeft="8px"; ui.appendChild(btnNormal); }
   let btnHub=document.getElementById("btnHub");
-  if(!btnHub){
-    btnHub=document.createElement("button");
-    btnHub.id="btnHub"; btnHub.textContent="Hub Addition";
-    btnHub.style.marginLeft="8px";
-    ui.appendChild(btnHub);
-  }
+  if(!btnHub){ btnHub=document.createElement("button"); btnHub.id="btnHub"; btnHub.textContent="Hub Addition"; btnHub.style.marginLeft="8px"; ui.appendChild(btnHub); }
   let btnCity=document.getElementById("btnCity");
-  if(!btnCity){
-    btnCity=document.createElement("button");
-    btnCity.id="btnCity"; btnCity.textContent="City Addition";
-    btnCity.style.marginLeft="8px";
-    ui.appendChild(btnCity);
-  }
+  if(!btnCity){ btnCity=document.createElement("button"); btnCity.id="btnCity"; btnCity.textContent="City Addition"; btnCity.style.marginLeft="8px"; ui.appendChild(btnCity); }
   let btnDesign=document.getElementById("btnDesign");
-  if(!btnDesign){
-    btnDesign=document.createElement("button");
-    btnDesign.id="btnDesign"; btnDesign.textContent="Design Warehouse";
-    btnDesign.style.marginLeft="8px";
-    ui.appendChild(btnDesign);
-  }
+  if(!btnDesign){ btnDesign=document.createElement("button"); btnDesign.id="btnDesign"; btnDesign.textContent="Design Warehouse"; btnDesign.style.marginLeft="8px"; ui.appendChild(btnDesign); }
 
   // wire buttons
   if(btnBefore) btnBefore.onclick=()=>startDisrupt();
@@ -971,9 +942,9 @@ const mapReady=new Promise(res=>map.on("load",res));
     if(cmd==='disrupt') startDisrupt();
     else if(cmd==='correct') applyCorrect();
     else if(cmd==='normal') backToNormal();
-    else if(cmd==='hub' || cmd==='add hub' || cmd==='hub addition' || cmd==='nagpur hub') hubAddition();
-    else if(cmd==='city' || cmd==='city addition') cityAddition();
-    else if(cmd==='design' || cmd==='design warehouse') runDesignWarehouse();
+    else if(cmd==='hub'||cmd==='add hub'||cmd==='hub addition'||cmd==='nagpur hub') hubAddition();
+    else if(cmd==='city'||cmd==='city addition') cityAddition();
+    else if(cmd==='design'||cmd==='design warehouse') runDesignWarehouse();
   });
 
   // load scenarios
