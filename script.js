@@ -18,19 +18,19 @@ window.addEventListener("error",(e)=>debug(`Error: ${e.message||e}`));
 const STYLE_URL="style.json";
 const MAP_INIT={center:[78.9629,21.5937],zoom:5.5,minZoom:3,maxZoom:12};
 const WAREHOUSE_ICON_SRC="warehouse_iso.png";
-const AUTO_FIT=false; // keep OFF
+const AUTO_FIT=false;
 const HUB_ID="H_NAG";
 const DEFAULT_CAPACITY_UNITS=10;
 const DEFAULT_SPEED_KMPH=55;
 
 /* ----- Design Warehouse constants ----- */
-const DESIGN_IMG_URL = "warehouse%20design.png"; // file resides in repo root (encode space)
-const AHD = { name: "WH6 — Ahmedabad", lat: 22.912454, lon: 72.594419 }; // Aslali industrial area, Ahmedabad
+const DESIGN_IMG_URL = "warehouse%20design.png"; // keep in repo root (space encoded)
+const AHD = { name: "WH6 — Ahmedabad", lat: 22.912454, lon: 72.594419 }; // Aslali industrial area
 const DESIGN_FLY_ZOOM = 14.8;
 const DESIGN_PITCH    = 64;
-const DESIGN_SPIN_MS  = 60000;   // ~1 minute hover
+const DESIGN_SPIN_MS  = 25000;   // 25 seconds
 const DESIGN_STEP_MS  = 2400;    // orbit cadence
-const CONNECT_TO      = "WH2";   // connect Ahmedabad to Mumbai by default
+const CONNECT_TO      = "WH2";   // connect Ahmedabad → Mumbai
 
 /* -------------------- anchors -------------------- */
 const CITY={
@@ -67,7 +67,6 @@ const RP={
   "WH5-WH2":[[22.5726,88.3639],[23.5,86.0],[22.5,84.0],[21.5,81.5],[21.1,79.0],[20.3,76.5],[19.3,74.5],[19.0760,72.8777]],
   "WH5-WH3":[[22.5726,88.3639],[21.15,85.8],[19.5,85.8],[17.9,82.7],[16.5,80.3],[13.3409,77.1010],[12.9716,77.5946]]
 };
-/* Hub spokes (Nagpur) — included only in Hub mode */
 RP["WH1-H_NAG"]=[[28.6139,77.2090],[26.5,78.2],[24.7,79.0],[22.8,79.2],[21.1458,79.0882]];
 RP["WH2-H_NAG"]=[[19.0760,72.8777],[19.6,74.8],[20.2,76.9],[20.7,78.4],[21.1458,79.0882]];
 RP["WH3-H_NAG"]=[[12.9716,77.5946],[14.6,78.6],[16.8,79.3],[19.0,79.4],[21.1458,79.0882]];
@@ -82,8 +81,6 @@ RP["WH5-NE_ML"]=[[22.5726,88.3639],[23.8,90.2],[24.8,91.2],[25.5788,91.8933]];
 RP["WH5-NE_MZ"]=[[22.5726,88.3639],[23.0,90.0],[23.4,91.3],[23.7271,92.7176]];
 RP["WH5-NE_NL"]=[[22.5726,88.3639],[24.3,89.7],[25.0,92.0],[25.6747,94.1100]];
 RP["WH5-NE_TR"]=[[22.5726,88.3639],[23.2,89.0],[23.5,90.2],[23.8315,91.2868]];
-
-/* Proposal: H_GUW → Seven Sisters (fan-out) + WH5 ↔ H_GUW */
 RP["WH5-H_GUW"]=[[22.5726,88.3639],[24.0,89.8],[25.2,90.8],[26.1445,91.7362]];
 RP["H_GUW-NE_AP"]=[[26.1445,91.7362],[26.7,92.2],[27.0844,93.6053]];
 RP["H_GUW-NE_MN"]=[[26.1445,91.7362],[25.6,92.4],[24.8170,93.9368]];
@@ -94,9 +91,7 @@ RP["H_GUW-NE_TR"]=[[26.1445,91.7362],[25.0,91.3],[23.8315,91.2868]];
 
 const keyFor=(a,b)=>`${a}-${b}`;
 const toLonLat=ll=>ll.map(p=>[p[1],p[0]]);
-function getAnchor(id){
-  return CITY[id] || HUB[id] || NE7[id] || HUB_CITY[id];
-}
+function getAnchor(id){ return CITY[id] || HUB[id] || NE7[id] || HUB_CITY[id]; }
 function getRoadLatLon(a,b){
   const k1=keyFor(a,b), k2=keyFor(b,a);
   if(RP[k1]) return RP[k1];
@@ -115,13 +110,12 @@ function expandIDsToLatLon(ids){
   return out;
 }
 
-/* Build base network; when includeHub=false, hide hub spokes.
-   IMPORTANT: exclude ANY NE_* or H_GUW links from the base set; they are added only in City Addition. */
+/* Build base network (hide NE & H_GUW unless City Addition is active) */
 function networkGeoJSON(includeHub){
   const keys=Object.keys(RP).filter(k=>
-      (includeHub || !k.includes("H_NAG")) &&         // hide Nagpur spokes unless Hub mode
-      !k.includes("H_GUW") &&                         // never include Guwahati links in base
-      !k.includes("NE_")                              // never include Seven Sisters links in base
+      (includeHub || !k.includes("H_NAG")) &&
+      !k.includes("H_GUW") &&
+      !k.includes("NE_")
   );
   const features=keys.map(k=>({
     type:"Feature",properties:{id:k},geometry:{type:"LineString",coordinates:toLonLat(RP[k])}
@@ -215,8 +209,8 @@ window.addEventListener("resize",resizeCanvas);
 
 /* -------------------- base network + highlight layers -------------------- */
 let SHOW_HUB=false;      // Nagpur spokes & marker
-let SHOW_NE=false;       // Seven Sisters (hidden until City Addition)
-let SHOW_HUB_CITY=false; // Guwahati hub marker (proposal stage)
+let SHOW_NE=false;       // Seven Sisters
+let SHOW_HUB_CITY=false; // Guwahati hub marker
 
 function ensureRoadLayers(){
   const net=networkGeoJSON(SHOW_HUB);
@@ -248,7 +242,7 @@ function ensureRoadLayers(){
       layout:{"line-cap":"round","line-join":"round"}});
   }
 
-  // --- Design Warehouse connection line source/layer ---
+  // Connection for Ahmedabad
   if (!map.getSource("design")) {
     map.addSource("design", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
   }
@@ -268,7 +262,7 @@ function refreshRoadNetwork(){
   if(src) src.setData(networkGeoJSON(SHOW_HUB));
 }
 
-/* helpers for sources */
+/* source helpers */
 function featureForRoute(ids){
   return {type:"Feature",properties:{id:ids.join("-")},
     geometry:{type:"LineString",coordinates:toLonLat(expandIDsToLatLon(ids))}};
@@ -295,28 +289,24 @@ function drawWarehouses(){
   if(!ctx) return; const z=map.getZoom();
   ctx.font="bold 11px system-ui, Segoe UI, Roboto, sans-serif";
 
-  // Base five warehouses
   for(const id of Object.keys(CITY)){
     const c=CITY[id], p=map.project({lng:c.lon,lat:c.lat}), S=sizeByZoom(z);
     if(WH_READY) ctx.drawImage(WH_IMG, p.x-S/2, p.y-S/2, S, S);
     drawLabelBox(c.name, p, z);
   }
 
-  // Nagpur hub marker ONLY in Hub mode
   if(SHOW_HUB){
     const c=HUB[HUB_ID]; const p=map.project({lng:c.lon,lat:c.lat}); const S=sizeByZoom(z);
     if(WH_READY) ctx.drawImage(WH_IMG, p.x-S/2, p.y-S/2, S, S);
     drawLabelBox(c.name, p, z);
   }
 
-  // Seven Sisters icons only (no labels)
   if(SHOW_NE){
     for(const id of Object.keys(NE7)){
       const c=NE7[id], p=map.project({lng:c.lon,lat:c.lat}), S=sizeByZoom(z);
       if(WH_READY) ctx.drawImage(WH_IMG, p.x-S/2, p.y-S/2, S, S);
     }
   }
-  // Guwahati hub marker only in proposal
   if(SHOW_HUB_CITY){
     const c=HUB_CITY.H_GUW; const p=map.project({lng:c.lon,lat:c.lat}); const S=sizeByZoom(z);
     if(WH_READY) ctx.drawImage(WH_IMG, p.x-S/2, p.y-S/2, S, S);
@@ -426,7 +416,7 @@ function drawFrame(){
   drawWarehouses();
 }
 
-/* -------------------- Narration + Chat (city addition REPEAT) -------------------- */
+/* -------------------- Narration + Chat -------------------- */
 const synth=window.speechSynthesis; let VOICE=null;
 function pickVoice(){
   const vs=synth?.getVoices?.()||[];
@@ -502,7 +492,7 @@ const ChatUI = (() => {
   };
 })();
 
-/* ---- ROBUST Narrator ---- */
+/* ---- Narrator ---- */
 const Narrator = (() => {
   let muted = false;
   let currentRun = 0;
@@ -693,7 +683,7 @@ function addDesignImageMarker() {
   const el = document.createElement("div");
   el.className = "design-img spin360";
   el.style.backgroundImage = `url("${DESIGN_IMG_URL}?v=${Date.now()}")`;
-  __designImgMarker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+  __designImgMarker = new maplibregl.Marker({ element: el, anchor: "center" }) // center on coord
     .setLngLat([AHD.lon, AHD.lat])
     .addTo(map);
 }
@@ -733,12 +723,11 @@ function removeDesignArtifacts() {
   clearAhmedabadConnection();
 }
 async function runDesignWarehouse() {
-  // reset state & visuals
   Narrator.clear(); clearAlert(); clearFix();
   SHOW_HUB=false; SHOW_NE=false; SHOW_HUB_CITY=false; refreshRoadNetwork();
   removeDesignArtifacts();
 
-  // 1) Narrate and fly in
+  // Narration (angles)
   Narrator.sayLinesOnce([
     "If you want to design a warehouse for four inbound trucks and three outbound trucks at the Aslali industrial area in Ahmedabad,",
     "this is the location. Let me zoom in and show the design from multiple angles."
@@ -754,7 +743,7 @@ async function runDesignWarehouse() {
     duration: 2800
   });
 
-  // 2) Orbit for ~1 minute while the image rotates via CSS
+  // Orbit ~25s while image rotates via CSS
   const t0 = Date.now();
   let bearing = 15;
   __orbitTimer = setInterval(() => {
@@ -772,10 +761,9 @@ async function runDesignWarehouse() {
   }, DESIGN_STEP_MS);
 }
 function finishDesignWarehouse() {
-  // 3) Fly out, swap to warehouse logo, connect to network
   if (__designImgMarker) { __designImgMarker.remove(); __designImgMarker = null; }
   addAhmedabadLogoMarker();
-  setAhmedabadConnection(CONNECT_TO); // Mumbai by default
+  setAhmedabadConnection(CONNECT_TO);
 
   const b = new maplibregl.LngLatBounds();
   Object.values(CITY).forEach(c => b.extend([c.lon, c.lat]));
@@ -800,7 +788,7 @@ function activateTrucksFromScenario(scn){
   (scn.trucks||[]).forEach((t,i)=>spawnTruck(t,i));
 }
 
-/* -------- NEW: merge helpers so other corridors keep moving during City Addition -------- */
+/* merge helpers (City Addition keeps other corridors moving) */
 function prefixTruckIds(trucksList, prefix){
   return (trucksList||[]).map((t, i)=>({ ...t, id: `${prefix}${t.id || i}` }));
 }
@@ -856,7 +844,7 @@ function backToNormal(){
   mode="normal";
 }
 
-/* -------------------- Hub Addition flow -------------------- */
+/* -------------------- Hub Addition -------------------- */
 function hubAddition(){
   if(!SCN_HUB){
     Narrator.sayLinesTwice(["Hub scenario not found in scenario_after.json (key 'hub')."], 800, 0.95);
@@ -888,7 +876,7 @@ function hubAddition(){
   mode="hub";
 }
 
-/* -------------------- City Addition flow (Seven Sisters + Guwahati) -------------------- */
+/* -------------------- City Addition -------------------- */
 async function cityAddition(){
   if(!SCN_CITY_BASE || !SCN_CITY_AFTER){
     Narrator.sayLinesOnce(["City Addition data not found. Please check 'city.baseline' in scenario_before.json and 'city.proposal' in scenario_after.json."], 800, 0.95);
@@ -897,7 +885,6 @@ async function cityAddition(){
   Narrator.clear(); clearAlert(); clearFix();
   removeDesignArtifacts();
 
-  // Stage 1: Baseline (Kolkata → NE, no Guwahati hub) — KEEP other corridors moving
   SHOW_HUB=false; SHOW_HUB_CITY=false;
   SHOW_NE=true; refreshRoadNetwork();
   const COMBINED_CITY_BASE = buildCombinedScenario(SCN_BEFORE, SCN_CITY_BASE, "NEB_");
@@ -918,13 +905,11 @@ async function cityAddition(){
   ];
   await Narrator.sayLinesOnce(baselineLines, 900, 0.92);
 
-  // Stage 2: Proposal (Guwahati hub)
   await new Promise(r=>setTimeout(r, 900));
   SHOW_HUB=false; SHOW_NE=true; SHOW_HUB_CITY=true;
   refreshRoadNetwork();
 
   const COMBINED_CITY_PROPOSAL = buildCombinedScenario(SCN_BEFORE, SCN_CITY_AFTER, "NEP_");
-
   const hasWH5GUW = (SCN_CITY_AFTER.trucks||[]).some(t=>
     (t.origin==="WH5" && (t.destination==="H_GUW"||t.destination==="NE_AS")) ||
     (t.destination==="WH5" && (t.origin==="H_GUW"||t.origin==="NE_AS"))
@@ -1002,7 +987,6 @@ const mapReady=new Promise(res=>map.on("load",res));
     btnCity.style.marginLeft="8px";
     ui.appendChild(btnCity);
   }
-  // Design Warehouse button
   let btnDesign=document.getElementById("btnDesign");
   if(!btnDesign){
     btnDesign=document.createElement("button");
@@ -1051,7 +1035,7 @@ const mapReady=new Promise(res=>map.on("load",res));
   // spawn trucks from BEFORE scenario
   activateTrucksFromScenario(SCN_BEFORE);
 
-  // initial camera — include base five; NE roads are hidden until City Addition
+  // initial camera — include base five
   const b=new maplibregl.LngLatBounds(); Object.values(CITY).forEach(c=>b.extend([c.lon,c.lat]));
   map.fitBounds(b,{padding:{top:60,left:60,right:320,bottom:60},duration:800,maxZoom:6.8});
 
